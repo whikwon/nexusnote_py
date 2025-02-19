@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
 from odmantic import AIOEngine
 
 from app import schemas
@@ -16,7 +16,14 @@ async def create_concept(
     engine: AIOEngine = Depends(deps.engine_generator),
     concept_in: schemas.ConceptCreate,
 ) -> Any:
-    concept = await crud_concept.create(engine, obj_in=concept_in)
+    # Check for duplicate concept name
+    duplicate = await crud_concept.get_by_name(engine, concept_in.name)
+    if duplicate:
+        raise HTTPException(
+            status_code=400, detail="Concept with this name already exists"
+        )
+
+    concept = await crud_concept.concept.create(engine, obj_in=concept_in)
     return concept
 
 
@@ -36,6 +43,12 @@ async def update_concept(
     engine: AIOEngine = Depends(deps.engine_generator),
     concept_in: schemas.ConceptUpdate,
 ) -> Any:
+    # Check for duplicate concept name
+    duplicate = await crud_concept.get_by_name(engine, concept_in.name)
+    if duplicate and duplicate.id != concept_in.id:
+        raise HTTPException(
+            status_code=400, detail="Another concept with this name already exists."
+        )
     db_obj = await crud_concept.get(engine, concept_in.id)
     concept = await crud_concept.update(engine, db_obj=db_obj, obj_in=concept_in)
     return concept

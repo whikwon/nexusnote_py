@@ -18,16 +18,24 @@ export default function Main() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [showList, setShowList] = useState(true);
 
-  const handleViewPDF = (id: string, url: string, title: string) => {
-    const newTab: PDFTab = {
-      id: crypto.randomUUID(),
-      documentId: id,
-      url,
-      title,
-    };
+  const activeDocumentId = openTabs.find(tab => tab.id === activeTabId)?.documentId ?? null;
 
-    setOpenTabs(prev => [...prev, newTab]);
-    setActiveTabId(newTab.id);
+  const handleViewPDF = (id: string, url: string, title: string) => {
+    // Check if a tab with the given documentId already exists.
+    // If so, reuse it by setting it as active, rather than creating a new tab.
+    const existingTab = openTabs.find(tab => tab.documentId === id);
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+    } else {
+      const newTab: PDFTab = {
+        id: crypto.randomUUID(),
+        documentId: id,
+        url,
+        title,
+      };
+      setOpenTabs(prev => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+    }
     setShowList(false);
   };
 
@@ -56,7 +64,11 @@ export default function Main() {
     <div className={cx('container')}>
       <div className={cx('content', { 'with-viewer': !showList })}>
         <div className={cx('list-container', { hidden: !showList })}>
-          <PDFList onView={handleViewPDF} />
+          <PDFList
+            activePdfId={activeDocumentId}
+            onView={handleViewPDF}
+            setShowList={setShowList}
+          />
         </div>
 
         {openTabs.length > 0 && (
@@ -78,14 +90,13 @@ export default function Main() {
                 </div>
               ))}
             </div>
-            {activeTabId && (
-              <div className={cx('pdf-viewer')}>
-                <App
-                  documentId={openTabs.find(tab => tab.id === activeTabId)!.documentId}
-                  onBack={handleBackToList}
-                />
-              </div>
-            )}
+            <div className={cx('pdf-viewer')}>
+              {openTabs.map(tab => (
+                <div key={tab.id} style={{ display: activeTabId === tab.id ? 'block' : 'none' }}>
+                  <App documentId={tab.documentId} onBack={handleBackToList} />
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

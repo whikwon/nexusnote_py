@@ -52,7 +52,7 @@ class CRUDDocument(CRUDBase[Document, DocumentCreate, DocumentUpdate]):
 
     async def get_with_related(
         self, engine: AIOEngine, id: str
-    ) -> tuple[Document | None, list[Annotation], list[Concept]]:
+    ) -> tuple[Document | None, list[Annotation]]:
         """
         Retrieves a document by its file_id along with its associated annotations and concepts.
         """
@@ -64,14 +64,7 @@ class CRUDDocument(CRUDBase[Document, DocumentCreate, DocumentUpdate]):
         # Retrieve annotations associated with this document using get_multi for consistency.
         annotations = await crud_annotation.get_multi(engine, {"file_id": id})
 
-        # Extract annotation IDs.
-        annotation_ids = [annotation.id for annotation in annotations]
-
-        # Retrieve concepts linked to the annotations using get_multi.
-        concepts = await crud_concept.get_multi(
-            engine, {"annotation_ids": {"$in": annotation_ids}}
-        )
-        return document, annotations, concepts
+        return document, annotations
 
     async def delete(self, engine: AIOEngine, id: str) -> Document:
         document = await super().delete(engine, id=id)

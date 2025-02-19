@@ -1,25 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
 import classNames from 'classnames/bind';
-import { Worker } from '@react-pdf-viewer/core';
-import { thumbnailPlugin } from '@react-pdf-viewer/thumbnail';
-import '@react-pdf-viewer/core/lib/styles/index.css';
-import '@react-pdf-viewer/thumbnail/lib/styles/index.css';
 import styles from './PDFList.module.scss';
-import PDFCard, { EmptyPDFCard } from './components/PDFCard/PDFCard';
-import PDFPreview from './components/PDFPreview/PDFPreview';
 import { PDFItem } from './types';
 
 const cx = classNames.bind(styles);
 
 interface PDFListProps {
+  activePdfId?: string | null;
   onView: (id: string, url: string, title: string) => void;
+  setShowList: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function PDFList({ onView }: PDFListProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export default function PDFList({ activePdfId, onView, setShowList }: PDFListProps) {
   const [pdfList, setPdfList] = useState<PDFItem[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingPdfId, setEditingPdfId] = useState<string | null>(null);
+  const [editingPdfName, setEditingPdfName] = useState<string>('');
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -50,14 +46,12 @@ export default function PDFList({ onView }: PDFListProps) {
     fetchDocuments();
   }, []);
 
-  const handlePreview = (id: string) => {
-    if (pdfList.find(pdf => pdf.id === id)?.isDisabled) return;
-    setSelectedId(id);
-  };
-
   const handleView = (id: string) => {
+    if (activePdfId === id) {
+      setShowList(false);
+      return;
+    }
     const pdf = pdfList.find(pdf => pdf.id === id);
-    if (pdf?.isDisabled) return;
     if (pdf) {
       onView(pdf.id, pdf.url, pdf.title);
     }
@@ -79,12 +73,40 @@ export default function PDFList({ onView }: PDFListProps) {
       }
 
       setPdfList(prev => prev.filter(pdf => pdf.id !== id));
-      if (selectedId === id) {
-        setSelectedId(null);
-      }
     } catch (error) {
       console.error('Error deleting document:', error);
       alert(error instanceof Error ? error.message : 'Failed to delete PDF. Please try again.');
+    }
+  };
+
+  const startEditing = (id: string, currentName: string) => {
+    setEditingPdfId(id);
+    setEditingPdfName(currentName);
+  };
+
+  const handleRenameSave = async (id: string) => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/document/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, name: editingPdfName }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update document');
+      }
+
+      setPdfList(prev =>
+        prev.map(pdf => (pdf.id === id ? { ...pdf, title: editingPdfName } : pdf))
+      );
+      setEditingPdfId(null);
+      setEditingPdfName('');
+    } catch (error) {
+      console.error('Error updating document:', error);
+      alert(
+        error instanceof Error ? error.message : 'Failed to update document. Please try again.'
+      );
     }
   };
 
@@ -108,20 +130,19 @@ export default function PDFList({ onView }: PDFListProps) {
         }
 
         const data = await response.json();
-        // if (data.id) {
-        //   await fetchDocument(data.id);
-        // }
+
+        const newPdf: PDFItem = {
+          id: data.id ? data.id.toString() : Date.now().toString(),
+          title: file.name,
+          url: data.id
+            ? `http://localhost:8000/api/v1/document/${data.id}`
+            : URL.createObjectURL(file),
+        };
+        setPdfList(prev => [...prev, newPdf]);
       } catch (error) {
         console.error('Error uploading file:', error);
         alert(error instanceof Error ? error.message : 'Failed to upload PDF. Please try again.');
       }
-
-      const newPdf: PDFItem = {
-        id: Date.now().toString(),
-        title: file.name,
-        url: URL.createObjectURL(file),
-      };
-      setPdfList(prev => [...prev, newPdf]);
     }
   };
 
@@ -129,79 +150,97 @@ export default function PDFList({ onView }: PDFListProps) {
     fileInputRef.current?.click();
   };
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    handleFileUpload(e.dataTransfer.files);
-  };
-
-  const handleClosePreview = () => {
-    setSelectedId(null);
-  };
-
-  const selectedPdf = pdfList.find(pdf => pdf.id === selectedId);
-
   return (
-    <Worker workerUrl={new URL('pdfjs-dist/build/pdf.worker.js', import.meta.url).toString()}>
-      <div
-        className={cx('container', { dragging: isDragging })}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        <div className={cx('header')}>
-          <h1 className={cx('title')}>PDF 문서 목록</h1>
-          <button className={cx('uploadButton')} onClick={handleUploadClick}>
-            PDF 업로드
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={e => handleFileUpload(e.target.files)}
-            accept=".pdf"
-            style={{ display: 'none' }}
-          />
-        </div>
-        <div className={cx('content')}>
-          <div className={cx('grid')}>
-            {pdfList.map(pdf => (
-              <div key={pdf.id} className={cx('gridItem')}>
-                <PDFCard
-                  pdf={pdf}
-                  isSelected={selectedId === pdf.id}
-                  onPreview={handlePreview}
-                  onView={handleView}
-                  onDelete={handleDelete}
-                />
-              </div>
-            ))}
-            <div className={cx('gridItem')}>
-              <EmptyPDFCard />
-            </div>
-          </div>
-        </div>
-        {isDragging && <div className={cx('dropOverlay')}>PDF 파일을 여기에 놓으세요</div>}
-        {selectedPdf && <PDFPreview pdf={selectedPdf} onClose={handleClosePreview} />}
+    <div className={cx('container')}>
+      <div className={cx('header')}>
+        <h1 className={cx('title')}>PDF 문서 목록</h1>
+        <button className={cx('uploadButton')} onClick={handleUploadClick}>
+          PDF 업로드
+        </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={e => handleFileUpload(e.target.files)}
+          accept=".pdf"
+          style={{ display: 'none' }}
+        />
       </div>
-    </Worker>
+      <div className={cx('content')}>
+        <ul className={cx('pdfList')}>
+          {pdfList.map(pdf => (
+            <li
+              onClick={pdf.id === editingPdfId ? undefined : () => handleView(pdf.id)}
+              key={pdf.id}
+              className={cx('pdfItem', { active: activePdfId === pdf.id })}
+            >
+              {editingPdfId === pdf.id ? (
+                <>
+                  <input
+                    type="text"
+                    value={editingPdfName}
+                    onChange={e => setEditingPdfName(e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        handleRenameSave(pdf.id);
+                      }
+                      if (e.key === 'Escape') {
+                        setEditingPdfId(null);
+                        setEditingPdfName('');
+                      }
+                    }}
+                    className={cx('renameInput')}
+                  />
+                </>
+              ) : (
+                <span>{pdf.title}</span>
+              )}
+              <div className={cx('actions')}>
+                {editingPdfId === pdf.id ? (
+                  <>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleRenameSave(pdf.id);
+                      }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setEditingPdfId(null);
+                        setEditingPdfName('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        startEditing(pdf.id, pdf.title);
+                      }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleDelete(pdf.id);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

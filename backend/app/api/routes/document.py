@@ -81,6 +81,21 @@ async def delete_document(
     return {"msg": "File deleted successfully."}
 
 
+@router.post("/update", response_model=schemas.DocumentBase)
+async def update_document(
+    *,
+    engine: AIOEngine = Depends(deps.engine_generator),
+    document_in: schemas.DocumentUpdate,
+) -> Any:
+    document = await crud_document.get(engine, document_in.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    updated_document = await crud_document.update(
+        engine, db_obj=document, obj_in=document_in
+    )
+    return updated_document
+
+
 @router.post("/process", response_model=schemas.Msg)
 async def process_document(
     *,
@@ -212,14 +227,11 @@ async def get_document_metadata(
     engine: AIOEngine = Depends(deps.engine_generator),
 ) -> Any:
     """Get document metadata including annotations and concepts"""
-    document, annotations, concepts = await crud_document.get_with_related(
-        engine, document_id
-    )
+    document, annotations = await crud_document.get_with_related(engine, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
     return {
         "document": document,
         "annotations": annotations,
-        "concepts": concepts,
     }

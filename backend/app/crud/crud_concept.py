@@ -7,6 +7,10 @@ from app.schemas.concept import ConceptCreate, ConceptUpdate
 
 
 class CRUDConcept(CRUDBase[Concept, ConceptCreate, ConceptUpdate]):
+    async def get_by_name(self, engine: AIOEngine, name: str) -> Concept | None:
+        # Check if a concept with the given name already exists
+        return await engine.find_one(Concept, Concept.name == name)
+
     async def delete(self, engine: AIOEngine, id: str) -> Concept:
         concept = await super().delete(engine, id=id)
 

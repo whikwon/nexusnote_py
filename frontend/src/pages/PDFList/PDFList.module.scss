@@ -1,5 +1,5 @@
 .container {
-  padding: 3rem 4rem;
+  padding: 16px;
   max-width: 1400px;
   margin: 0 auto;
   position: relative;
@@ -24,67 +24,79 @@
 
 .header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 3rem;
-  padding: 1.5rem 2rem;
-  background-color: white;
-  border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  justify-content: space-between;
+  margin-bottom: 16px;
 }
 
 .title {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #1a1a1a;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-
-  &::before {
-    content: '📚';
-    font-size: 1.8rem;
-  }
+  font-size: 24px;
+  color: #333;
+  margin: 0;
 }
 
 .uploadButton {
-  background-color: #3b82f6;
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.75rem;
-  font-weight: 600;
-  font-size: 1rem;
+  background-color: #0070f3;
   border: none;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  transition: background-color 0.2s ease;
+}
 
-  &::before {
-    content: '⬆️';
-    font-size: 1.2rem;
-  }
-
-  &:hover {
-    background-color: #2563eb;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
-  }
-
-  &:active {
-    background-color: #1d4ed8;
-    transform: translateY(0);
-  }
+.uploadButton:hover {
+  background-color: #005bb5;
 }
 
 .content {
-  height: calc(100vh - 12rem);
-  padding: 2rem;
-  background-color: white;
-  border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow-y: auto;
+  background-color: #f5f5f5;
+  padding: 16px;
+  border-radius: 4px;
+}
+
+.pdfList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pdfItem {
+  padding: 8px;
+  margin-bottom: 8px;
+  background-color: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+
+.pdfItem:hover {
+  background-color: #efefef;
+}
+
+.pdfItem.active {
+  background-color: #d0e6ff;
+  border-color: #0070f3;
+}
+
+.dropOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
 }
 
 .grid {
@@ -223,22 +235,6 @@
   }
 }
 
-.dropOverlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: #3b82f6;
-  color: white;
-  padding: 1.5rem 3rem;
-  border-radius: 1rem;
-  font-size: 1.5rem;
-  font-weight: 600;
-  pointer-events: none;
-  animation: fadeIn 0.2s ease-in-out;
-  box-shadow: 0 8px 16px rgba(59, 130, 246, 0.2);
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -248,4 +244,24 @@
     opacity: 1;
     transform: translate(-50%, -50%);
   }
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.renameInput {
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  outline: none;
+  font-size: 14px;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.renameInput:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 3px rgba(0, 123, 255, 0.5);
 }

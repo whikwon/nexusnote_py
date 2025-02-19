@@ -32,20 +32,6 @@ const MenuIcon = () => (
   </svg>
 );
 
-// Add this custom UploadIcon component near the MenuIcon component
-const UploadIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path
-      d="M11 14.9861C11 15.5384 11.4477 15.9861 12 15.9861C12.5523 15.9861 13 15.5384 13 14.9861V7.82831L16.2428 11.0711L17.657 9.65685L12 4L6.34315 9.65685L7.75736 11.0711L11 7.82831V14.9861Z"
-      fill="currentColor"
-    />
-    <path
-      d="M4 14H6V18H18V14H20V18C20 19.1046 19.1046 20 18 20H6C4.89543 20 4 19.1046 4 18V14Z"
-      fill="currentColor"
-    />
-  </svg>
-);
-
 // Add this BackIcon component near other icon components
 const BackIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -53,16 +39,30 @@ const BackIcon = () => (
   </svg>
 );
 
-interface AnnotationBase {
+interface DocumentMetadata {
   id: string;
-  file_id: string;
-  highlight_areas: HighlightArea[];
-  created_at: string;
-  updated_at: string;
-  comment: string;
+  name: string;
+  path: string;
+  content_type: string;
+  metadata: Record<string, any>;
 }
 
-// Add this interface near other interfaces
+interface Annotation {
+  id: string;
+  file_id: string;
+  comment: string;
+  highlight_areas: HighlightArea[];
+  quote: string;
+}
+
+interface Concept {
+  id: string;
+  name: string;
+  comment: string;
+  annotation_ids: string[];
+  linked_concept_ids: string[];
+}
+
 interface ConceptCreate {
   name: string;
   annotation_ids?: number[];
@@ -77,30 +77,22 @@ interface AppProps {
 
 function App({ documentId, onBack }: AppProps) {
   // ===== Note related interfaces and state =====
-  interface Note {
-    id: string;
-    file_id: string;
-    comment: string;
-    highlight_areas: HighlightArea[];
-    quote: string;
-  }
-
   const [message, setMessage] = useState('');
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setAnnotations] = useState<Annotation[]>([]);
   const noteEles = useRef(new Map<string, HTMLElement>());
+
+  // New state: which annotation (note) is having its "Add to Concept" dropdown open
+  const [annotationForConceptSelection, setAnnotationForConceptSelection] = useState<string | null>(
+    null
+  );
+  // New ref for the concept list popup
+  const conceptListRef = useRef<HTMLDivElement | null>(null);
 
   // ===== Left sidebar state (Notes/Thumbnails/Bookmarks) =====
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [activeTab, setActiveTab] = useState<'notes' | 'thumbnails' | 'bookmarks'>('notes');
 
   // ===== Concept (Zettelkasten permanent note) related interfaces and state =====
-  interface Concept {
-    id: string;
-    name: string;
-    comment: string;
-    annotation_ids: string[];
-    linked_concept_ids: string[];
-  }
 
   const [documentConcepts, setDocumentConcepts] = useState<Concept[]>([]);
   const [allConcepts, setAllConcepts] = useState<Concept[]>([]);
@@ -190,14 +182,14 @@ function App({ documentId, onBack }: AppProps) {
                     }
 
                     const responseJson = await response.json();
-                    const newNote: Note = {
+                    const newNote: Annotation = {
                       id: responseJson.id,
                       file_id: responseJson.file_id,
                       comment: responseJson.comment,
                       highlight_areas: responseJson.highlight_areas,
                       quote: responseJson.quote,
                     };
-                    setNotes(prevNotes => [...prevNotes, newNote]);
+                    setAnnotations(prevNotes => [...prevNotes, newNote]);
                     setMessage('');
                     props.cancel();
                   } catch (error) {
@@ -223,7 +215,7 @@ function App({ documentId, onBack }: AppProps) {
     );
   };
 
-  const jumpToNote = (note: Note) => {
+  const jumpToNote = (note: Annotation) => {
     const noteElement = noteEles.current.get(note.id);
     if (noteElement) {
       noteElement.scrollIntoView();
@@ -282,7 +274,7 @@ function App({ documentId, onBack }: AppProps) {
       if (!response.ok) {
         throw new Error('Failed to delete annotation');
       }
-      setNotes(prev => prev.filter(note => note.id !== id));
+      setAnnotations(prev => prev.filter(note => note.id !== id));
     } catch (error) {
       console.error('Error deleting note:', error);
       setMessage('Failed to delete note');
@@ -318,18 +310,17 @@ function App({ documentId, onBack }: AppProps) {
         });
 
         if (!response.ok) {
-          throw new Error('Failed to create concept');
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to create concept');
         }
 
         const createdConcept = await response.json();
-
-        // Update local state
         setDocumentConcepts(prev => [...prev, createdConcept]);
         setAllConcepts(prev => [...prev, createdConcept]);
         setNewConceptTitle('');
       } catch (error) {
         console.error('Error creating concept:', error);
-        // You might want to show an error message to the user here
+        alert(error instanceof Error ? error.message : 'Failed to create concept.');
       }
     }
   };
@@ -411,14 +402,15 @@ function App({ documentId, onBack }: AppProps) {
         body: JSON.stringify(activeConcept),
       });
       if (!response.ok) {
-        throw new Error('Failed to update concept comment.');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update concept comment.');
       }
       const updatedConcept = await response.json();
       setActiveConcept(updatedConcept);
       setDocumentConcepts(prev => prev.map(c => (c.id === updatedConcept.id ? updatedConcept : c)));
     } catch (error) {
       console.error('Error updating concept comment:', error);
-      alert('Error updating concept comment.');
+      alert(error instanceof Error ? error.message : 'Error updating concept comment.');
     }
   };
 
@@ -441,56 +433,13 @@ function App({ documentId, onBack }: AppProps) {
     return c.name.toLowerCase().includes(term);
   });
 
-  // Add this state near other state declarations
-  const [isUploading, setIsUploading] = useState(false);
-
-  // Update the handleFileUpload function to use fetchDocument instead of fetchPDF
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch('http://localhost:8000/api/v1/document/upload', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Upload failed');
-      }
-
-      const data = await response.json();
-      console.log('Upload successful:', data);
-
-      // After successful upload, fetch and display the new PDF
-      if (data.id) {
-        await fetchDocument(data.id);
-      }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      alert(error instanceof Error ? error.message : 'Failed to upload PDF. Please try again.');
-    } finally {
-      setIsUploading(false);
-      event.target.value = '';
-    }
-  };
-
   // Add these states near other state declarations
   const [pdfData, setPdfData] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Add these states near other state declarations
-  const [annotations, setAnnotations] = useState<AnnotationBase[]>([]);
-  const [documentMetadata, setDocumentMetadata] = useState<DocumentBase | null>(null);
+  const [documentMetadata, setDocumentMetadata] = useState<DocumentMetadata | null>(null);
 
   // Update the fetchDocument function to properly handle the PDF data
   const fetchDocument = async (documentId: string) => {
@@ -520,8 +469,6 @@ function App({ documentId, onBack }: AppProps) {
       const metadata = await metadataResponse.json();
       setDocumentMetadata(metadata.document);
       setAnnotations(metadata.annotations);
-      setNotes(metadata.annotations);
-      setDocumentConcepts(metadata.concepts);
 
       setIsLoading(false);
     } catch (err) {
@@ -563,11 +510,89 @@ function App({ documentId, onBack }: AppProps) {
     fetchConcepts();
   }, []);
 
-  // Helper function to return a concept's name by matching its id
-  const getConceptName = (conceptId: string) => {
+  // Insert this just before the return statement in your App function:
+  const sortedConcepts = [...allConcepts].sort((a, b) => {
+    // Check if concept has any annotation from the current document
+    const aHas = a.annotation_ids.some(id => notes.some(note => note.id === id));
+    const bHas = b.annotation_ids.some(id => notes.some(note => note.id === id));
+    if (aHas && !bHas) return -1;
+    if (!aHas && bHas) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  // New function to add an annotation to a selected concept
+  const addAnnotationToConcept = async (conceptId: string, noteId: string) => {
     const concept = allConcepts.find(c => c.id === conceptId);
-    return concept ? concept.name : conceptId;
+    if (!concept) {
+      console.error('Concept not found');
+      return;
+    }
+    if (concept.annotation_ids.includes(noteId)) {
+      console.log('Annotation already added to concept');
+      return;
+    }
+    const updatedConcept = { ...concept, annotation_ids: [...concept.annotation_ids, noteId] };
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/concept/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedConcept),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update annotation reference.');
+      }
+      const updatedConceptFromServer = await response.json();
+      updateConcept(updatedConceptFromServer);
+    } catch (error) {
+      console.error('Error updating annotation reference:', error);
+    }
   };
+
+  // New function to remove an annotation from a concept
+  const removeAnnotationFromConcept = async (conceptId: string, noteId: string) => {
+    const concept = allConcepts.find(c => c.id === conceptId);
+    if (!concept) {
+      console.error('Concept not found');
+      return;
+    }
+    if (!concept.annotation_ids.includes(noteId)) {
+      console.log('Annotation not associated with concept');
+      return;
+    }
+    const updatedAnnotationIds = concept.annotation_ids.filter(id => id !== noteId);
+    const updatedConcept = { ...concept, annotation_ids: updatedAnnotationIds };
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/concept/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedConcept),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update concept');
+      }
+      const updatedConceptFromServer = await response.json();
+      updateConcept(updatedConceptFromServer);
+    } catch (error) {
+      console.error('Error updating concept removal:', error);
+    }
+  };
+
+  // Close the concept list popup if clicked outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (conceptListRef.current && !conceptListRef.current.contains(event.target as Node)) {
+        setAnnotationForConceptSelection(null);
+      }
+    }
+    if (annotationForConceptSelection) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [annotationForConceptSelection]);
 
   return (
     <div style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
@@ -621,20 +646,6 @@ function App({ documentId, onBack }: AppProps) {
                         gap: '8px',
                       }}
                     >
-                      <div style={{ position: 'relative' }}>
-                        <Button onClick={() => document.getElementById('pdf-upload')?.click()}>
-                          {isUploading ? <span>Uploading...</span> : <UploadIcon />}
-                        </Button>
-                        <input
-                          type="file"
-                          id="pdf-upload"
-                          accept=".pdf"
-                          onChange={handleFileUpload}
-                          style={{
-                            display: 'none',
-                          }}
-                        />
-                      </div>
                       <ShowSearchPopover />
                       <ZoomOut />
                       <Zoom />
@@ -727,8 +738,8 @@ function App({ documentId, onBack }: AppProps) {
                       >
                         <div
                           onClick={() => {
-                            if (note.highlightAreas.length > 0) {
-                              highlightPluginInstance.jumpToHighlightArea(note.highlightAreas[0]);
+                            if (note.highlight_areas.length > 0) {
+                              highlightPluginInstance.jumpToHighlightArea(note.highlight_areas[0]);
                             }
                           }}
                           style={{ cursor: 'pointer' }}
@@ -746,16 +757,59 @@ function App({ documentId, onBack }: AppProps) {
                             {note.quote}
                           </blockquote>
                           <div>{note.comment}</div>
+                          {allConcepts.filter(concept => concept.annotation_ids.includes(note.id))
+                            .length > 0 && (
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px' }}>
+                              Concepts:{' '}
+                              {allConcepts
+                                .filter(concept => concept.annotation_ids.includes(note.id))
+                                .map(concept => concept.name)
+                                .join(', ')}
+                            </div>
+                          )}
                         </div>
                         <div
                           style={{
                             marginTop: '8px',
                             display: 'flex',
                             gap: '8px',
+                            flexWrap: 'wrap',
                           }}
                         >
+                          <Button onClick={() => setAnnotationForConceptSelection(note.id)}>
+                            Add to Concept
+                          </Button>
                           <Button onClick={() => deleteNote(note.id)}>Delete</Button>
                         </div>
+                        {annotationForConceptSelection === note.id && (
+                          <div
+                            ref={conceptListRef}
+                            style={{
+                              marginTop: '4px',
+                              border: '1px solid #ccc',
+                              background: '#fff',
+                              padding: '4px',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                              position: 'absolute',
+                              zIndex: 1000,
+                            }}
+                          >
+                            {allConcepts
+                              .filter(concept => !concept.annotation_ids.includes(note.id))
+                              .map(concept => (
+                                <div
+                                  key={concept.id}
+                                  onClick={async () => {
+                                    await addAnnotationToConcept(concept.id, note.id);
+                                    setAnnotationForConceptSelection(null);
+                                  }}
+                                  style={{ padding: '4px', cursor: 'pointer' }}
+                                >
+                                  {concept.name}
+                                </div>
+                              ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </>
@@ -841,27 +895,29 @@ function App({ documentId, onBack }: AppProps) {
                 </PrimaryButton>
               </div>
 
-              {/* List of Concepts */}
+              {/* Concept Selection */}
               <div style={{ marginBottom: '16px' }}>
-                {documentConcepts.length === 0 ? (
-                  <div style={{ textAlign: 'center' }}>No concepts yet</div>
-                ) : (
-                  documentConcepts.map(concept => (
-                    <div
-                      key={concept.id}
-                      onClick={() => handleSelectConcept(concept)}
-                      style={{
-                        border: '1px solid #ccc',
-                        padding: '8px',
-                        marginBottom: '8px',
-                        cursor: 'pointer',
-                        background: activeConcept?.id === concept.id ? '#eef' : 'transparent',
-                      }}
-                    >
-                      <strong>{concept.name}</strong>
-                    </div>
-                  ))
-                )}
+                <select
+                  value={activeConcept ? activeConcept.id : ''}
+                  onChange={e => {
+                    const conceptId = e.target.value;
+                    const concept = allConcepts.find(c => c.id === conceptId);
+                    if (concept) {
+                      handleSelectConcept(concept);
+                    } else {
+                      setActiveConcept(null);
+                    }
+                  }}
+                  style={{ width: '100%' }}
+                  className="custom-input"
+                >
+                  <option value="">Select a concept</option>
+                  {sortedConcepts.map(concept => (
+                    <option key={concept.id} value={concept.id}>
+                      {concept.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Active Concept Details */}
@@ -885,8 +941,23 @@ function App({ documentId, onBack }: AppProps) {
                               marginBottom: '8px',
                               borderRadius: '4px',
                               background: '#f9f9f9',
+                              position: 'relative',
                             }}
                           >
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '4px',
+                                right: '4px',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                              }}
+                              onClick={async () => {
+                                await removeAnnotationFromConcept(activeConcept.id, note.id);
+                              }}
+                            >
+                              ×
+                            </div>
                             <div>
                               <strong>Quote:</strong> {truncate(note.quote, 50)}
                             </div>
